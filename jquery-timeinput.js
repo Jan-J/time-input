@@ -6,10 +6,14 @@
     $[pluginName] = function (el, options) {
         var _this = this;
 
+        this.opts = $.extend({}, $[pluginName].defaultOptions, options);
+
         this.el = el;
         this.$el = $(this.el);
+        this.$wrapper = null;
         this.$hours = null;
         this.$minutes = null;
+        this.$inputs = null;
 
         var controlsTemplates = {
             wrapper: '<div class="time-input" />',
@@ -17,25 +21,189 @@
             minutes: '<input type="text" class="time-input-minutes" maxlength="2">',
             divider: '<span class=time-input-divider>:</span>'
         };
+        var timeFormatRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
         this.init = function () {
             this.buildControls();
+            this.initEvents();
+            this.initValue();
         };
 
         this.buildControls = function () {
             this.$hours = $(controlsTemplates.hours);
             this.$minutes = $(controlsTemplates.minutes);
+            this.$inputs = this.$hours.add(this.$minutes);
 
             this.$el
                 .wrap(controlsTemplates.wrapper)
                 .addClass('time-input-value')
                 .hide();
 
-            this.$el.parent()
+            this.$wrapper = this.$el.parent()
                 .append(this.$hours)
                 .append(controlsTemplates.divider)
                 .append(this.$minutes);
 
+            var tabindex = this.$el.attr('tabindex');
+            if (!isNaN(tabindex)) {
+                this.$inputs.attr('tabindex', tabindex);
+                this.$el.removeAttr('tabindex');
+            }
+        };
+
+        this.initEvents = function () {
+            // select whole input content on focus
+            this.$inputs.on('focus', function () {
+                var $this = $(this);
+                setTimeout(function () {
+                    $this.select();
+                }, 0);
+            });
+
+            // listen to events
+            this.$inputs.on('change keyup', function (event) {
+                // correct inputs on field change, validate them only on key up
+                if (event.type == 'change') {
+                    _this.correctInputs();
+                } else {
+                    _this.validateInputs();
+                }
+
+                _this.$el.val(_this.joinTime(_this.$hours.val(), _this.$minutes.val()));
+            });
+        };
+
+        this.initValue = function () {
+            var timeParts = this.splitTime(this.constrainTime(this.$el.val()));
+            this.$hours.val(timeParts[0]);
+            this.$minutes.val(timeParts[1]);
+        };
+
+        this.parseTimeOption = function (value, defaultValue) {
+            if (value === null) {
+                return defaultValue;
+            }
+
+            if (timeFormatRegex.test(value)) {
+                return value;
+            }
+
+            if (typeof value === 'function') {
+                value = value();
+            } else {
+                value = $(value).val();
+            }
+
+            if (!timeFormatRegex.test(value)) {
+                console.warn('Value is not in valid time format.', value);
+                return defaultValue;
+            }
+
+            return value;
+        };
+
+        this.minTime = function () {
+            return this.parseTimeOption(this.opts.minTime, '00:00');
+        };
+        this.maxTime = function () {
+            return this.parseTimeOption(this.opts.maxTime, '23:59');
+        };
+
+        this.isBeforeMinTime = function (time) {
+            var timeParts = this.splitTime(time);
+            var minTimeParts = this.splitTime(this.minTime());
+
+            if (timeParts[0] < minTimeParts[0]) {
+                return true;
+            } else if (timeParts[0] == minTimeParts[0] && timeParts[1] < minTimeParts[1]) {
+                return true;
+            } else {
+                return false;
+            }
+        };
+
+        this.isAfterMaxTime = function (time) {
+            var timeParts = this.splitTime(time);
+            var maxTimeParts = this.splitTime(this.maxTime());
+
+            if (timeParts[0] > maxTimeParts[0]) {
+                return true;
+            } else if (timeParts[0] == maxTimeParts[0] && timeParts[1] > maxTimeParts[1]) {
+                return true;
+            } else {
+                return false;
+            }
+        };
+
+        this.formatTimePart = function (value) {
+            return (value < 10 ? '0' : '') + value;
+        };
+
+        this.sanitizeHours = function (hours) {
+            hours = parseInt(hours) || 0;
+            hours = Math.min(23, Math.max(0, hours));
+
+            return this.formatTimePart(hours);
+        };
+
+        this.sanitizeMinutes = function (minutes) {
+            minutes = parseInt(minutes) || 0;
+            minutes = Math.min(59, Math.max(0, minutes));
+
+            return this.formatTimePart(minutes);
+        };
+
+        this.splitTime = function (time) {
+            time = time || '';
+            var timeParts = time.split(':');
+
+            if (timeParts.length !== 2) {
+                timeParts = [0, 0];
+            }
+
+            return [this.sanitizeHours(timeParts[0]), this.sanitizeMinutes(timeParts[1])];
+        };
+
+        this.sanitizeTime = function (time) {
+            return this.splitTime(time).join(':');
+        };
+
+        this.constrainTime = function (time) {
+            time = this.sanitizeTime(time);
+
+            if (this.isBeforeMinTime(time)) {
+                return this.minTime();
+            } else if (this.isAfterMaxTime(time)) {
+                return this.maxTime();
+            } else {
+                return time;
+            }
+        };
+
+        this.joinTime = function (hours, minutes) {
+            return hours + ':' + minutes;
+        };
+
+        this.correctInputs = function () {
+            var timeParts = this.splitTime(this.constrainTime(this.joinTime(this.$hours.val(), this.$minutes.val())));
+
+            this.$hours.val(timeParts[0]);
+            this.$minutes.val(timeParts[1]);
+
+            this.setValidity('hours', true);
+            this.setValidity('minutes', true);
+        };
+
+        this.validateInputs = function () {
+            var timeParts = [this.$hours.val(), this.$minutes.val()];
+            var constrainedTimeParts = this.splitTime(this.constrainTime(this.joinTime(this.$hours.val(), this.$minutes.val())));
+
+            this.setValidity('hours', parseInt(timeParts[0]) == parseInt(constrainedTimeParts[0]));
+            this.setValidity('minutes', parseInt(timeParts[1]) == parseInt(constrainedTimeParts[1]));
+        };
+
+        this.setValidity = function (timePartName, isValid) {
+            this.$wrapper.toggleClass('time-input-invalid-' + timePartName, !isValid);
         };
 
         this.init();

@@ -1,8 +1,20 @@
 .time-input {
     display: inline-block;
 }
+input.time-input-value {
+    display: none;
+}
 .time-input .time-input-hours,
 .time-input .time-input-minutes {
     display: inline-block;
     width: 16px;
+}
+.time-input.time-input-invalid-hours .time-input-hours,
+.time-input.time-input-invalid-minutes .time-input-minutes {
+    outline: solid red 2px;
+    outline-offset: 0;
+    border-color: transparent;
+}
+.time-input span {
+    font-weight: bold;
 }

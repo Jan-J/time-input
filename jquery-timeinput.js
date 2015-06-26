@@ -29,6 +29,15 @@
             this.initValue();
         };
 
+        this.destroy = function () {
+            this.$wrapper.children().not(this.$el).remove();
+            this.$el
+                .unwrap()
+                .removeData(pluginName)
+                .removeClass('time-input-value')
+                .attr('type', 'text');
+        };
+
         this.buildControls = function () {
             this.$hours = $(controlsTemplates.hours);
             this.$minutes = $(controlsTemplates.minutes);
@@ -37,7 +46,7 @@
             this.$el
                 .wrap(controlsTemplates.wrapper)
                 .addClass('time-input-value')
-                .hide();
+                .attr('type', 'hidden');
 
             this.$wrapper = this.$el.parent()
                 .append(this.$hours)
@@ -46,9 +55,12 @@
 
             var tabindex = this.$el.attr('tabindex');
             if (!isNaN(tabindex)) {
-                this.$inputs.attr('tabindex', tabindex);
-                this.$el.removeAttr('tabindex');
+                this.setTabindex(tabindex);
             }
+        };
+
+        this.setTabindex = function (tabindex) {
+            this.$inputs.attr('tabindex', tabindex);
         };
 
         this.initEvents = function () {
@@ -68,15 +80,16 @@
                 } else {
                     _this.validateInputs();
                 }
-
-                _this.$el.val(_this.joinTime(_this.$hours.val(), _this.$minutes.val()));
             });
         };
 
         this.initValue = function () {
-            var timeParts = this.splitTime(this.constrainTime(this.$el.val()));
-            this.$hours.val(timeParts[0]);
-            this.$minutes.val(timeParts[1]);
+            var value = this.opts.value;
+            if (value === null) {
+                value = this.getHiddenValue();
+            }
+
+            this.setValue(value, false);
         };
 
         this.parseTimeOption = function (value, defaultValue) {
@@ -95,7 +108,10 @@
             }
 
             if (!timeFormatRegex.test(value)) {
-                console.warn('Value is not in valid time format.', value);
+                if (value !== null) {
+                    console.warn('Value is not in valid time format.', value);
+                }
+
                 return defaultValue;
             }
 
@@ -185,13 +201,45 @@
         };
 
         this.correctInputs = function () {
-            var timeParts = this.splitTime(this.constrainTime(this.joinTime(this.$hours.val(), this.$minutes.val())));
-
-            this.$hours.val(timeParts[0]);
-            this.$minutes.val(timeParts[1]);
+            this.setValue(this.joinTime(this.$hours.val(), this.$minutes.val()), true);
 
             this.setValidity('hours', true);
             this.setValidity('minutes', true);
+        };
+
+        this.setValue = function (value, triggerChangeEvent) {
+            var timeParts = this.splitTime(this.constrainTime(value));
+            this.setValueFromTimeParts(timeParts, triggerChangeEvent);
+        };
+
+        this.setValueFromTimeParts = function (timeParts, triggerChangeEvent) {
+            this.setVisibleValue(timeParts);
+            this.setHiddenValue(this.getVisibleValue(), triggerChangeEvent);
+        };
+
+        this.getVisibleValue = function () {
+            return this.joinTime(this.$hours.val(), this.$minutes.val());
+        };
+
+        this.setVisibleValue = function (timeParts) {
+            this.$hours.val(timeParts[0]);
+            this.$minutes.val(timeParts[1]);
+        };
+
+        this.getHiddenValue = function () {
+            return this.$el.val();
+        };
+
+        this.setHiddenValue = function (value, triggerChangeEvent) {
+            this.$el.val(value);
+
+            if (triggerChangeEvent) {
+                this.$el.trigger('change');
+            }
+        };
+
+        this.setOptions = function (options) {
+            $.extend(this.opts, options);
         };
 
         this.validateInputs = function () {
@@ -207,10 +255,16 @@
         };
 
         this.init();
-        return $(this);
     };
 
-    var publicMethods = {};
+    var publicMethods = {
+        correctInputs: true,
+        validateInputs: true,
+        setValue: true,
+        setOptions: true,
+        setTabindex: true,
+        destroy: true
+    };
 
     var callPublicMethod = function (context, method, args) {
         var methodHandler = publicMethods[method];
@@ -232,7 +286,8 @@
 
     $[pluginName].defaultOptions = {
         minTime: null,
-        maxTime: null
+        maxTime: null,
+        value: null
     };
 
     $.fn[pluginName] = function (methodOrOptions) {
